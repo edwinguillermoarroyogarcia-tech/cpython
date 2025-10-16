@@ -1,3 +1,516 @@
+abi_info.debug:mod:`!sys` --- System-specific parameters and functions
+========================================================
+
+.. module:: sys
+   :synopsis: Access system-specific parameters and functions.
+
+--------------
+
+This module provides access to some variables used or maintained by the
+interpreter and to functions that interact strongly with the interpreter. It is
+always available. Unless explicitly noted otherwise, all variables are read-only.
+
+
+.. data:: abi_info
+
+   .. versionadded:: 3.15
+
+   An object containing information about the ABI of the currently running
+   Python interpreter.
+   It should include information that affect the CPython ABI in ways that
+   require a specific build of the interpreter chosen from variants that can
+   co-exist on a single machine.
+   For example, it does not encode the base OS (Linux or Windows), but does
+   include pointer size since some systems support both 32- and 64-bit builds.
+   The available entries are the same on all platforms;
+   e.g. *pointer_size* is available even on 64-bit-only architectures.
+
+   The following attributes are available:
+
+   .. attribute:: abi_info.pointer_bits
+
+      The width of pointers in bits, as an integer,
+      equivalent to ``8 * sizeof(void *)``.
+      Usually, this is  ``32`` or ``64``.
+
+   .. attribute:: abi_info.free_threaded
+
+      A Boolean indicating whether the interpreter was built with
+      :term:`free threading` support.
+      This reflects either the presence of the :option:`--disable-gil`
+      :file:`configure` option (on Unix)
+      or setting the ``DisableGil`` property (on Windows).
+
+   .. attribute:: abi_info.debug
+
+      A Boolean indicating whether the interpreter was built in
+      :ref:`debug mode <debug-build>`.
+      This reflects either the presence of the :option:`--with-pydebug`
+      :file:`configure` option (on Unix)
+      or the ``Debug`` configuration (on Windows).
+
+   .. attribute:: abi_info.byteorder
+
+      A string indicating the native byte order,
+      either ``'big'`` or ``'little'``.
+      This is the same as the :data:`byteorder` attribute.
+
+
+.. data:: abiflags
+
+   On POSIX systems where Python was built with the standard ``configure``
+   script, this contains the ABI flags as specified by :pep:`3149`.
+
+   .. versionadded:: 3.2
+
+   .. versionchanged:: 3.8
+      Default flags became an empty string (``m`` flag for pymalloc has been
+      removed).
+
+   .. availability:: Unix.
+
+
+.. function:: addaudithook(hook)
+
+   Append the callable *hook* to the list of active auditing hooks for the
+   current (sub)interpreter.
+
+   When an auditing event is raised through the :func:`sys.audit` function, each
+   hook will be called in the order it was added with the event name and the
+   tuple of arguments. Native hooks added by :c:func:`PySys_AddAuditHook` are
+   called first, followed by hooks added in the current (sub)interpreter.  Hooks
+   can then log the event, raise an exception to abort the operation,
+   or terminate the process entirely.
+
+   Note that audit hooks are primarily for collecting information about internal
+   or otherwise unobservable actions, whether by Python or libraries written in
+   Python. They are not suitable for implementing a "sandbox". In particular,
+   malicious code can trivially disable or bypass hooks added using this
+   function. At a minimum, any security-sensitive hooks must be added using the
+   C API :c:func:`PySys_AddAuditHook` before initialising the runtime, and any
+   modules allowing arbitrary memory modification (such as :mod:`ctypes`) should
+   be completely removed or closely monitored.
+
+   .. audit-event:: sys.addaudithook "" sys.addaudithook
+
+      Calling :func:`sys.addaudithook` will itself raise an auditing event
+      named ``sys.addaudithook`` with no arguments. If any
+      existing hooks raise an exception derived from :class:`RuntimeError`, the
+      new hook will not be added and the exception suppressed. As a result,
+      callers cannot assume that their hook has been added unless they control
+      all existing hooks.
+
+   See the :ref:`audit events table <audit-events>` for all events raised by
+   CPython, and :pep:`578` for the original design discussion.
+
+   .. versionadded:: 3.8
+
+   .. versionchanged:: 3.8.1
+
+      Exceptions derived from :class:`Exception` but not :class:`RuntimeError`
+      are no longer suppressed.
+
+   .. impl-detail::
+
+      When tracing is enabled (see :func:`settrace`), Python hooks are only
+      traced if the callable has a ``__cantrace__`` member that is set to a
+      true value. Otherwise, trace functions will skip the hook.
+
+
+.. data:: argv
+
+   The list of command line arguments passed to a Python script. ``argv[0]`` is the
+   script name (it is operating system dependent whether this is a full pathname or
+   not).  If the command was executed using the :option:`-c` command line option to
+   the interpreter, ``argv[0]`` is set to the string ``'-c'``.  If no script name
+   was passed to the Python interpreter, ``argv[0]`` is the empty string.
+
+   To loop over the standard input, or the list of files given on the
+   command line, see the :mod:`fileinput` module.
+
+   See also :data:`sys.orig_argv`.
+
+   .. note::
+      On Unix, command line arguments are passed by bytes from OS.  Python decodes
+      them with filesystem encoding and "surrogateescape" error handler.
+      When you need original bytes, you can get it by
+      ``[os.fsencode(arg) for arg in sys.argv]``.
+
+
+.. _auditing:
+
+.. function:: audit(event, *args)
+
+   .. index:: single: auditing
+
+   Raise an auditing event and trigger any active auditing hooks.
+   *event* is a string identifying the event, and *args* may contain
+   optional arguments with more information about the event.  The
+   number and types of arguments for a given event are considered a
+   public and stable API and should not be modified between releases.
+
+   For example, one auditing event is named ``os.chdir``. This event has
+   one argument called *path* that will contain the requested new
+   working directory.
+
+   :func:`sys.audit` will call the existing auditing hooks, passing
+   the event name and arguments, and will re-raise the first exception
+   from any hook. In general, if an exception is raised, it should not
+   be handled and the process should be terminated as quickly as
+   possible. This allows hook implementations to decide how to respond
+   to particular events: they can merely log the event or abort the
+   operation by raising an exception.
+
+   Hooks are added using the :func:`sys.addaudithook` or
+   :c:func:`PySys_AddAuditHook` functions.
+
+   The native equivalent of this function is :c:func:`PySys_Audit`. Using the
+   native function is preferred when possible.
+
+   See the :ref:`audit events table <audit-events>` for all events raised by
+   CPython.
+
+   .. versionadded:: 3.8
+
+
+.. data:: base_exec_prefix
+
+   Equivalent to :data:`exec_prefix`, but referring to the base Python installation.
+
+   When running under :ref:`sys-path-init-virtual-environments`,
+   :data:`exec_prefix` gets overwritten to the virtual environment prefix.
+   :data:`base_exec_prefix`, conversely, does not change, and always points to
+   the base Python installation.
+   Refer to :ref:`sys-path-init-virtual-environments` for more information.
+
+   .. versionadded:: 3.3
+
+
+.. data:: base_prefix
+
+   Equivalent to :data:`prefix`, but referring to the base Python installation.
+
+   When running under :ref:`virtual environment <venv-def>`,
+   :data:`prefix` gets overwritten to the virtual environment prefix.
+   :data:`base_prefix`, conversely, does not change, and always points to
+   the base Python installation.
+   Refer to :ref:`sys-path-init-virtual-environments` for more information.
+
+   .. versionadded:: 3.3
+
+
+.. data:: byteorder
+
+   An indicator of the native byte order.  This will have the value ``'big'`` on
+   big-endian (most-significant byte first) platforms, and ``'little'`` on
+   little-endian (least-significant byte first) platforms.
+
+
+.. data:: builtin_module_names
+
+   A tuple of strings containing the names of all modules that are compiled into this
+   Python interpreter.  (This information is not available in any other way ---
+   ``modules.keys()`` only lists the imported modules.)
+
+   See also the :data:`sys.stdlib_module_names` list.
+
+
+.. function:: call_tracing(func, args)
+
+   Call ``func(*args)``, while tracing is enabled.  The tracing state is saved,
+   and restored afterwards.  This is intended to be called from a debugger from
+   a checkpoint, to recursively debug or profile some other code.
+
+   Tracing is suspended while calling a tracing function set by
+   :func:`settrace` or :func:`setprofile` to avoid infinite recursion.
+   :func:`!call_tracing` enables explicit recursion of the tracing function.
+
+
+.. data:: copyright
+
+   A string containing the copyright pertaining to the Python interpreter.
+
+
+.. function:: _clear_type_cache()
+
+   Clear the internal type cache. The type cache is used to speed up attribute
+   and method lookups. Use the function *only* to drop unnecessary references
+   during reference leak debugging.
+
+   This function should be used for internal and specialized purposes only.
+
+   .. deprecated:: 3.13
+      Use the more general :func:`_clear_internal_caches` function instead.
+
+
+.. function:: _clear_internal_caches()
+
+   Clear all internal performance-related caches. Use this function *only* to
+   release unnecessary references and memory blocks when hunting for leaks.
+
+   .. versionadded:: 3.13
+
+
+.. function:: _current_frames()
+
+   Return a dictionary mapping each thread's identifier to the topmost stack frame
+   currently active in that thread at the time the function is called. Note that
+   functions in the :mod:`traceback` module can build the call stack given such a
+   frame.
+
+   This is most useful for debugging deadlock:  this function does not require the
+   deadlocked threads' cooperation, and such threads' call stacks are frozen for as
+   long as they remain deadlocked.  The frame returned for a non-deadlocked thread
+   may bear no relationship to that thread's current activity by the time calling
+   code examines the frame.
+
+   This function should be used for internal and specialized purposes only.
+
+   .. audit-event:: sys._current_frames "" sys._current_frames
+
+.. function:: _current_exceptions()
+
+   Return a dictionary mapping each thread's identifier to the topmost exception
+   currently active in that thread at the time the function is called.
+   If a thread is not currently handling an exception, it is not included in
+   the result dictionary.
+
+   This is most useful for statistical profiling.
+
+   This function should be used for internal and specialized purposes only.
+
+   .. audit-event:: sys._current_exceptions "" sys._current_exceptions
+
+   .. versionchanged:: 3.12
+      Each value in the dictionary is now a single exception instance, rather
+      than a 3-tuple as returned from ``sys.exc_info()``.
+
+.. function:: breakpointhook()
+
+   This hook function is called by built-in :func:`breakpoint`.  By default,
+   it drops you into the :mod:`pdb` debugger, but it can be set to any other
+   function so that you can choose which debugger gets used.
+
+   The signature of this function is dependent on what it calls.  For example,
+   the default binding (e.g. ``pdb.set_trace()``) expects no arguments, but
+   you might bind it to a function that expects additional arguments
+   (positional and/or keyword).  The built-in ``breakpoint()`` function passes
+   its ``*args`` and ``**kws`` straight through.  Whatever
+   ``breakpointhooks()`` returns is returned from ``breakpoint()``.
+
+   The default implementation first consults the environment variable
+   :envvar:`PYTHONBREAKPOINT`.  If that is set to ``"0"`` then this function
+   returns immediately; i.e. it is a no-op.  If the environment variable is
+   not set, or is set to the empty string, ``pdb.set_trace()`` is called.
+   Otherwise this variable should name a function to run, using Python's
+   dotted-import nomenclature, e.g. ``package.subpackage.module.function``.
+   In this case, ``package.subpackage.module`` would be imported and the
+   resulting module must have a callable named ``function()``.  This is run,
+   passing in ``*args`` and ``**kws``, and whatever ``function()`` returns,
+   ``sys.breakpointhook()`` returns to the built-in :func:`breakpoint`
+   function.
+
+   Note that if anything goes wrong while importing the callable named by
+   :envvar:`PYTHONBREAKPOINT`, a :exc:`RuntimeWarning` is reported and the
+   breakpoint is ignored.
+
+   Also note that if ``sys.breakpointhook()`` is overridden programmatically,
+   :envvar:`PYTHONBREAKPOINT` is *not* consulted.
+
+   .. versionadded:: 3.7
+
+.. function:: _debugmallocstats()
+
+   Print low-level information to stderr about the state of CPython's memory
+   allocator.
+
+   If Python is :ref:`built in debug mode <debug-build>` (:option:`configure
+   --with-pydebug option <--with-pydebug>`), it also performs some expensive
+   internal consistency checks.
+
+   .. versionadded:: 3.3
+
+   .. impl-detail::
+
+      This function is specific to CPython.  The exact output format is not
+      defined here, and may change.
+
+
+.. data:: dllhandle
+
+   Integer specifying the handle of the Python DLL.
+
+   .. availability:: Windows.
+
+
+.. function:: displayhook(value)
+
+   If *value* is not ``None``, this function prints ``repr(value)`` to
+   ``sys.stdout``, and saves *value* in ``builtins._``. If ``repr(value)`` is
+   not encodable to ``sys.stdout.encoding`` with ``sys.stdout.errors`` error
+   handler (which is probably ``'strict'``), encode it to
+   ``sys.stdout.encoding`` with ``'backslashreplace'`` error handler.
+
+   ``sys.displayhook`` is called on the result of evaluating an :term:`expression`
+   entered in an interactive Python session.  The display of these values can be
+   customized by assigning another one-argument function to ``sys.displayhook``.
+
+   Pseudo-code::
+
+       def displayhook(value):
+           if value is None:
+               return
+           # Set '_' to None to avoid recursion
+           builtins._ = None
+           text = repr(value)
+           try:
+               sys.stdout.write(text)
+           except UnicodeEncodeError:
+               bytes = text.encode(sys.stdout.encoding, 'backslashreplace')
+               if hasattr(sys.stdout, 'buffer'):
+                   sys.stdout.buffer.write(bytes)
+               else:
+                   text = bytes.decode(sys.stdout.encoding, 'strict')
+                   sys.stdout.write(text)
+           sys.stdout.write("\n")
+           builtins._ = value
+
+   .. versionchanged:: 3.2
+      Use ``'backslashreplace'`` error handler on :exc:`UnicodeEncodeError`.
+
+
+.. data:: dont_write_bytecode
+
+   If this is true, Python won't try to write ``.pyc`` files on the
+   import of source modules.  This value is initially set to ``True`` or
+   ``False`` depending on the :option:`-B` command line option and the
+   :envvar:`PYTHONDONTWRITEBYTECODE` environment variable, but you can set it
+   yourself to control bytecode file generation.
+
+
+.. data:: _emscripten_info
+
+   A :term:`named tuple` holding information about the environment on the
+   *wasm32-emscripten* platform. The named tuple is provisional and may change
+   in the future.
+
+   .. attribute:: _emscripten_info.emscripten_version
+
+      Emscripten version as tuple of ints (major, minor, micro), e.g. ``(3, 1, 8)``.
+
+   .. attribute:: _emscripten_info.runtime
+
+      Runtime string, e.g. browser user agent, ``'Node.js v14.18.2'``, or ``'UNKNOWN'``.
+
+   .. attribute:: _emscripten_info.pthreads
+
+      ``True`` if Python is compiled with Emscripten pthreads support.
+
+   .. attribute:: _emscripten_info.shared_memory
+
+      ``True`` if Python is compiled with shared memory support.
+
+   .. availability:: Emscripten.
+
+   .. versionadded:: 3.11
+
+
+.. data:: pycache_prefix
+
+   If this is set (not ``None``), Python will write bytecode-cache ``.pyc``
+   files to (and read them from) a parallel directory tree rooted at this
+   directory, rather than from ``__pycache__`` directories in the source code
+   tree. Any ``__pycache__`` directories in the source code tree will be ignored
+   and new ``.pyc`` files written within the pycache prefix. Thus if you use
+   :mod:`compileall` as a pre-build step, you must ensure you run it with the
+   same pycache prefix (if any) that you will use at runtime.
+
+   A relative path is interpreted relative to the current working directory.
+
+   This value is initially set based on the value of the :option:`-X`
+   ``pycache_prefix=PATH`` command-line option or the
+   :envvar:`PYTHONPYCACHEPREFIX` environment variable (command-line takes
+   precedence). If neither are set, it is ``None``.
+
+   .. versionadded:: 3.8
+
+
+.. function:: excepthook(type, value, traceback)
+
+   This function prints out a given traceback and exception to ``sys.stderr``.
+
+   When an exception other than :exc:`SystemExit` is raised and uncaught, the interpreter calls
+   ``sys.excepthook`` with three arguments, the exception class, exception
+   instance, and a traceback object.  In an interactive session this happens just
+   before control is returned to the prompt; in a Python program this happens just
+   before the program exits.  The handling of such top-level exceptions can be
+   customized by assigning another three-argument function to ``sys.excepthook``.
+
+   .. audit-event:: sys.excepthook hook,type,value,traceback sys.excepthook
+
+      Raise an auditing event ``sys.excepthook`` with arguments ``hook``,
+      ``type``, ``value``, ``traceback`` when an uncaught exception occurs.
+      If no hook has been set, ``hook`` may be ``None``. If any hook raises
+      an exception derived from :class:`RuntimeError` the call to the hook will
+      be suppressed. Otherwise, the audit hook exception will be reported as
+      unraisable and ``sys.excepthook`` will be called.
+
+   .. seealso::
+
+      The :func:`sys.unraisablehook` function handles unraisable exceptions
+      and the :func:`threading.excepthook` function handles exception raised
+      by :func:`threading.Thread.run`.
+
+
+.. data:: __breakpointhook__
+          __displayhook__
+          __excepthook__
+          __unraisablehook__
+
+   These objects contain the original values of ``breakpointhook``,
+   ``displayhook``, ``excepthook``, and ``unraisablehook`` at the start of the
+   program.  They are saved so that ``breakpointhook``, ``displayhook`` and
+   ``excepthook``, ``unraisablehook`` can be restored in case they happen to
+   get replaced with broken or alternative objects.
+
+   .. versionadded:: 3.7
+      __breakpointhook__
+
+   .. versionadded:: 3.8
+      __unraisablehook__
+
+
+.. function:: exception()
+
+   This function, when called while an exception handler is executing (such as
+   an ``except`` or ``except*`` clause), returns the exception instance that
+   was caught by this handler. When exception handlers are nested within one
+   another, only the exception handled by the innermost handler is accessible.
+
+   If no exception handler is executing, this function returns ``None``.
+
+   .. versionadded:: 3.11
+
+
+.. function:: exc_info()
+
+   This function returns the old-style representation of the handled
+   exception. If an exception ``e`` is currently handled (so
+   :func:`exception` would return ``e``), :func:`exc_info` returns the
+   tuple ``(type(e), e, e.__traceback__)``.
+   That is, a tuple containing the type of the exception (a subclass of
+   :exc:`BaseException`), the exception itself, and a :ref:`traceback
+   object <traceback-objects>` which typically encapsulates the call
+   stack at the point where the exception last occurred.
+
+   .. index:: pair: object; traceback
+
+   If no exception is being handled anywhere on the stack, this function
+   return a tuple containing three ``None`` values.
+
+   .. versionchanged:: 3.11
+      The ``type`` and ``traceback`` fields are now derived from the ``value``
+      (the exception instance), so when an excepti5539377724 5539377724
 :mod:`!sys` --- System-specific parameters and functions
 ========================================================
 
